@@ -4,7 +4,8 @@
 
 # Retrieve AWS credentials from env variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
 provider "aws" {
-  region = "${var.aws_region}"
+  region  = "${var.aws_region}"
+  profile = "${var.aws_profile}"
 }
 
 #####
@@ -24,7 +25,7 @@ module "kubeadm-token" {
 data "template_file" "master_policy_json" {
   template = "${file("${path.module}/template/master-policy.json.tpl")}"
 
-  vars {}
+  # vars  = {}
 }
 
 resource "aws_iam_policy" "master_policy" {
@@ -55,13 +56,13 @@ EOF
 }
 
 resource "aws_iam_policy_attachment" "master-attach" {
-  name       = "master-attachment"
-  roles      = ["${aws_iam_role.master_role.name}"]
+  name = "master-attachment"
+  roles = ["${aws_iam_role.master_role.name}"]
   policy_arn = "${aws_iam_policy.master_policy.arn}"
 }
 
 resource "aws_iam_instance_profile" "master_profile" {
-  name  = "${var.cluster_name}-master"
+  name = "${var.cluster_name}-master"
   role = "${aws_iam_role.master_role.name}"
 }
 
@@ -70,14 +71,14 @@ resource "aws_iam_instance_profile" "master_profile" {
 data "template_file" "node_policy_json" {
   template = "${file("${path.module}/template/node-policy.json.tpl")}"
 
-  vars {}
+  vars = {}
 }
 
 resource "aws_iam_policy" "node_policy" {
-  name        = "${var.cluster_name}-node"
-  path        = "/"
+  name = "${var.cluster_name}-node"
+  path = "/"
   description = "Policy for role ${var.cluster_name}-node"
-  policy      = "${data.template_file.node_policy_json.rendered}"
+  policy = "${data.template_file.node_policy_json.rendered}"
 }
 
 resource "aws_iam_role" "node_role" {
@@ -107,7 +108,7 @@ resource "aws_iam_policy_attachment" "node-attach" {
 }
 
 resource "aws_iam_instance_profile" "node_profile" {
-  name  = "${var.cluster_name}-node"
+  name = "${var.cluster_name}-node"
   role = "${aws_iam_role.node_role.name}"
 }
 
@@ -122,50 +123,50 @@ data "aws_subnet" "cluster_subnet" {
 
 resource "aws_security_group" "kubernetes" {
   vpc_id = "${data.aws_subnet.cluster_subnet.vpc_id}"
-  name = "${var.cluster_name}"
+  name   = "${var.cluster_name}"
 
   tags = "${merge(map("Name", var.cluster_name, format("kubernetes.io/cluster/%v", var.cluster_name), "owned"), var.tags)}"
 }
 
 # Allow outgoing connectivity
 resource "aws_security_group_rule" "allow_all_outbound_from_kubernetes" {
-    type = "egress"
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    type              = "egress"
+    from_port         = 0
+    to_port           = 0
+    protocol          = "-1"
+    cidr_blocks       = ["0.0.0.0/0"]
     security_group_id = "${aws_security_group.kubernetes.id}"
 }
 
 # Allow SSH connections only from specific CIDR (TODO)
 resource "aws_security_group_rule" "allow_ssh_from_cidr" {
-    count = "${length(var.ssh_access_cidr)}"
-    type = "ingress"
-    from_port = 22
-    to_port = 22
-    protocol = "tcp"
-    cidr_blocks = ["${var.ssh_access_cidr[count.index]}"]
+    count             = "${length(var.ssh_access_cidr)}"
+    type              = "ingress"
+    from_port         = 22
+    to_port           = 22
+    protocol          = "tcp"
+    cidr_blocks       = ["${var.ssh_access_cidr[count.index]}"]
     security_group_id = "${aws_security_group.kubernetes.id}"
 }
 
 # Allow the security group members to talk with each other without restrictions
 resource "aws_security_group_rule" "allow_cluster_crosstalk" {
-    type = "ingress"
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
+    type                     = "ingress"
+    from_port                = 0
+    to_port                  = 0
+    protocol                 = "-1"
     source_security_group_id = "${aws_security_group.kubernetes.id}"
-    security_group_id = "${aws_security_group.kubernetes.id}"
+    security_group_id        = "${aws_security_group.kubernetes.id}"
 }
 
 # Allow API connections only from specific CIDR (TODO)
 resource "aws_security_group_rule" "allow_api_from_cidr" {
-    count = "${length(var.api_access_cidr)}"
-    type = "ingress"
-    from_port = 6443
-    to_port = 6443
-    protocol = "tcp"
-    cidr_blocks = ["${var.api_access_cidr[count.index]}"]
+    count             = "${length(var.api_access_cidr)}"
+    type              = "ingress"
+    from_port         = 6443
+    to_port           = 6443
+    protocol          = "tcp"
+    cidr_blocks       = ["${var.api_access_cidr[count.index]}"]
     security_group_id = "${aws_security_group.kubernetes.id}"
 }
 
@@ -176,7 +177,7 @@ resource "aws_security_group_rule" "allow_api_from_cidr" {
 data "template_file" "init_master" {
   template = "${file("${path.module}/scripts/init-aws-kubernetes-master.sh")}"
 
-  vars {
+  vars = {
     kubeadm_token = "${module.kubeadm-token.token}"
     dns_name      = "${var.cluster_name}.${var.hosted_zone}"
     ip_address    = "${aws_eip.master.public_ip}"
@@ -194,18 +195,18 @@ data "template_file" "init_master" {
 data "template_file" "init_node" {
   template = "${file("${path.module}/scripts/init-aws-kubernetes-node.sh")}"
 
-  vars {
-    kubeadm_token = "${module.kubeadm-token.token}"
-    master_ip     = "${aws_eip.master.public_ip}"
-    master_private_ip     = "${aws_instance.master.private_ip}"
-    dns_name      = "${var.cluster_name}.${var.hosted_zone}"
+  vars = {
+    kubeadm_token     = "${module.kubeadm-token.token}"
+    master_ip         = "${aws_eip.master.public_ip}"
+    master_private_ip = "${aws_instance.master.private_ip}"
+    dns_name          = "${var.cluster_name}.${var.hosted_zone}"
   }
 }
 
 data "template_file" "cloud_init_config" {
     template = "${file("${path.module}/scripts/cloud-init-config.yaml")}"
 
-    vars {
+    vars = {
         calico_yaml = "${base64gzip("${file("${path.module}/scripts/calico.yaml")}")}"
     }
 }
@@ -243,7 +244,7 @@ data "template_cloudinit_config" "node_cloud_init" {
 ##########
 
 resource "aws_key_pair" "keypair" {
-  key_name = "${var.cluster_name}"
+  key_name   = "${var.cluster_name}"
   public_key = "${file(var.ssh_public_key)}"
 }
 
@@ -253,7 +254,7 @@ resource "aws_key_pair" "keypair" {
 
 data "aws_ami" "centos7" {
   most_recent = true
-  owners = ["aws-marketplace"]
+  owners      = ["aws-marketplace"]
 
   filter {
     name   = "product-code"
@@ -276,7 +277,7 @@ data "aws_ami" "centos7" {
 #####
 
 resource "aws_eip" "master" {
-  vpc      = true
+  vpc = true
 }
 
 resource "aws_instance" "master" {
@@ -301,9 +302,9 @@ resource "aws_instance" "master" {
     tags = "${merge(map("Name", join("-", list(var.cluster_name, "master")), format("kubernetes.io/cluster/%v", var.cluster_name), "owned"), var.tags)}"
 
     root_block_device {
-        volume_type = "gp2"
-	      volume_size = "50"
-	      delete_on_termination = true
+        volume_type          = "gp2"
+       volume_size           = "50"
+       delete_on_termination = true
     }
 
     lifecycle {
@@ -325,10 +326,10 @@ resource "aws_eip_association" "master_assoc" {
 #####
 
 resource "aws_launch_configuration" "nodes" {
-  name_prefix   = "${var.cluster_name}-nodes-"
-  image_id      = "${data.aws_ami.centos7.id}"
-  instance_type = "${var.worker_instance_type}"
-  key_name = "${aws_key_pair.keypair.key_name}"
+  name_prefix          = "${var.cluster_name}-nodes-"
+  image_id             = "${data.aws_ami.centos7.id}"
+  instance_type        = "${var.worker_instance_type}"
+  key_name             = "${aws_key_pair.keypair.key_name}"
   iam_instance_profile = "${aws_iam_instance_profile.node_profile.name}"
 
   security_groups = [
@@ -340,9 +341,9 @@ resource "aws_launch_configuration" "nodes" {
   user_data = "${data.template_cloudinit_config.node_cloud_init.rendered}"
 
   root_block_device {
-      volume_type = "gp2"
-	    volume_size = "50"
-	    delete_on_termination = true
+      volume_type          = "gp2"
+     volume_size           = "50"
+     delete_on_termination = true
   }
 
   lifecycle {
@@ -354,31 +355,31 @@ resource "aws_launch_configuration" "nodes" {
 }
 
 resource "aws_autoscaling_group" "nodes" {
-  vpc_zone_identifier = ["${var.worker_subnet_ids}"]
+  vpc_zone_identifier = "${var.worker_subnet_ids}"
   
-  name                      = "${var.cluster_name}-nodes"
-  max_size                  = "${var.max_worker_count}"
-  min_size                  = "${var.min_worker_count}"
-  desired_capacity          = "${var.min_worker_count}"
-  launch_configuration      = "${aws_launch_configuration.nodes.name}"
+  name                 = "${var.cluster_name}-nodes"
+  max_size             = "${var.max_worker_count}"
+  min_size             = "${var.min_worker_count}"
+  desired_capacity     = "${var.min_worker_count}"
+  launch_configuration = "${aws_launch_configuration.nodes.name}"
 
-  tags = [{
-    key = "Name"
-    value = "${var.cluster_name}-node"
+  tag {
+    key                 = "Name"
+    value               = "${var.cluster_name}-node"
     propagate_at_launch = true
-  }]
+  }
 
-  tags = [{
-    key = "kubernetes.io/cluster/${var.cluster_name}"
-    value = "owned"
+  tag {
+    key                 = "kubernetes.io/cluster/${var.cluster_name}"
+    value               = "owned"
     propagate_at_launch = true
-  }]
+  }
 
-  tags = ["${var.tags2}"]
+  tags = "${var.tags2}"
 
   lifecycle {
     ignore_changes = ["desired_capacity"]
-  }  
+  }
 }
 
 #####
